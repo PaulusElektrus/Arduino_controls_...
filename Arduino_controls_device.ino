@@ -1,59 +1,112 @@
-int pin_out = 3;
-int dutyCycle = 0; // 0-255
-String inInt;
+// Relais Pins
+#define Relais_AC           6
+#define Relais_AC_to_NT     7
+#define Relais_NT_to_BT     8   
+#define Relais_BT_to_DC     9
+#define Relais_DC_to_WR     10
+#define Relais_WR_to_AC     11
 
-void setup() {
-  Serial.begin(9600);
+// ADS1115
+#include<ADS1115_WE.h> 
+#include<Wire.h>
+#define I2C_ADDRESS 0x48
+ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS);
+
+// PWM Output
+#define PWM_NT 3
+#define PWM_DC 5
+
+// Variablen
+float voltage = 0.0;
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChars[numChars];
+char commandFromESP[numChars] = {0};
+float powerFromESP = 0.0;
+boolean newData = false;
+
+
+void setup(){
+    Serial.begin(115200);
+    Wire.begin();
+    if(!adc.init()){
+        Serial.println("ADS1115 not connected!");}
+    adc.setVoltageRange_mV(ADS1115_RANGE_6144);
 }
 
-void loop() {
-  while (Serial.available() > 0) {
-    char inChar = Serial.read();
-    if (isDigit(inChar)) {
-      // convert the incoming byte to a char and add it to the string:
-      inInt += (char)inChar;
+
+void loop(){
+    recvWithStartEndMarkers();
+    if (newData == true) {
+        strcpy(tempChars, receivedChars);
+        parseData();
+        showParsedData();
+        newData = false;
     }
-    // if you get a newline, print the string, then the string's value:
-    if (inChar == '>') {
-      Serial.print("Value: ");
-      Serial.println(inInt.toInt());
-      // clear the string for new input:
-      inInt = "";
+    voltage = readChannel(ADS1115_COMP_0_GND);
+    delay(1000);
+}
+
+
+float readChannel(ADS1115_MUX channel){
+  float voltage = 0.0;
+  adc.setCompareChannels(channel);
+  adc.startSingleMeasurement();
+  while(adc.isBusy()){}
+  voltage = adc.getResult_V(); // alternative: getResult_mV for Millivolt
+  return voltage;
+}
+
+
+void recvWithStartEndMarkers() {
+    static boolean recvInProgress = false;
+    static byte ndx = 0;
+    char startMarker = '<';
+    char endMarker = '>';
+    char rc;
+
+    while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+            if (rc != endMarker) {
+                receivedChars[ndx] = rc;
+                ndx++;
+                if (ndx >= numChars) {
+                    ndx = numChars - 1;
+                }
+            }
+            else {
+                receivedChars[ndx] = '\0';
+                recvInProgress = false;
+                ndx = 0;
+                newData = true;
+            }
+        }
+
+        else if (rc == startMarker) {
+            recvInProgress = true;
+        }
     }
-  }
-/*
-    if (incomingString.equals("u")){
-        if (dutyCycle <= 245){
-        dutyCycle += 10;}
-        analogWrite(pin_out, dutyCycle);
-        Serial.print("Duty Cycle: ");
-        Serial.println(dutyCycle);
-    }
-    if (incomingString.equals("d")){
-        if (dutyCycle >= 10){
-        dutyCycle -= 10;}
-        analogWrite(pin_out, dutyCycle);
-        Serial.print("Duty Cycle: ");
-        Serial.println(dutyCycle);
-    }
-    if (incomingString.equals("z")){
-        dutyCycle = 0;
-        analogWrite(pin_out, dutyCycle);
-        Serial.print("Duty Cycle: ");
-        Serial.println(dutyCycle);
-    }
-    if (incomingString.equals("m")){
-        dutyCycle = 125;
-        analogWrite(pin_out, dutyCycle);
-        Serial.print("Duty Cycle: ");
-        Serial.println(dutyCycle);
-    }
-    if (incomingString.equals("f")){
-        dutyCycle = 255;
-        analogWrite(pin_out, dutyCycle);
-        Serial.print("Duty Cycle: ");
-        Serial.println(dutyCycle);
-    
-    }
-*/
+}
+
+
+void parseData() {      // split the data into its parts
+
+    char * strtokIndx; // this is used by strtok() as an index
+
+    strtokIndx = strtok(tempChars,",");
+    strcpy(commandFromESP, strtokIndx);     
+
+    strtokIndx = strtok(NULL, ",");
+    powerFromESP = atof(strtokIndx);
+
+}
+
+
+void showParsedData() {
+    Serial.print("Message: ");
+    Serial.println(commandFromESP);
+    Serial.print("Power: ");
+    Serial.println(powerFromESP);
 }

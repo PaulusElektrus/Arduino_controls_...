@@ -8,7 +8,7 @@ if __name__ == "__main__":
     
     ap = argparse.ArgumentParser()
     ap.add_argument("-p", "--port", default="/dev/ttyUSB0", help="Enter Port Name")
-    ap.add_argument("-b", "--baudrate", default=9600, help="Enter Baud rate")
+    ap.add_argument("-b", "--baudrate", default=115200, help="Enter Baud rate")
     args = ap.parse_args()
 
     uart = uart_api.UART_API(args.port, args.baudrate)
